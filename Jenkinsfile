@@ -1,0 +1,67 @@
+pipeline {
+    agent any
+    
+    environment {
+        AWS_ACCOUNT_ID = credentials('AWS_ACCOUNT_ID')
+        AWS_DEFAULT_REGION = "us-east-1" // Change this to your preferred region
+        IMAGE_REPO_NAME = "your-repo-name"
+        IMAGE_TAG = "${env.BUILD_NUMBER}"
+        REPOSITORY_URI = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${IMAGE_REPO_NAME}"
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+        
+        stage('Install Dependencies') {
+            steps {
+                sh 'npm install'
+            }
+        }
+        
+        stage('Run Tests') {
+            steps {
+                sh 'npm test'
+            }
+        }
+        
+        stage('Build and Push Docker Image') {
+            steps {
+                script {
+                    docker.build("${REPOSITORY_URI}:${IMAGE_TAG}")
+                    sh "aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com"
+                    sh "docker push ${REPOSITORY_URI}:${IMAGE_TAG}"
+                }
+            }
+        }
+        
+        stage('Deploy to EC2') {
+            steps {
+                script {
+                    def ec2Instance = "your-ec2-instance-id"
+                    sh "aws ec2 describe-instances --instance-ids ${ec2Instance}"
+                    
+                    // SSH into EC2 and deploy the new Docker image
+                    sh """
+                        ssh ec2-user@your-ec2-ip-address '
+                        aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com
+                        docker pull ${REPOSITORY_URI}:${IMAGE_TAG}
+                        docker stop your-container-name || true
+                        docker rm your-container-name || true
+                        docker run -d --name your-container-name -p 80:3000 ${REPOSITORY_URI}:${IMAGE_TAG}
+                        '
+                    """
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            emailext body: 'A Test EMail', recipientProviders: [[$class: 'DevelopersRecipientProvider'], [$class: 'RequesterRecipientProvider']], subject: 'Test'
+        }
+    }
+}
