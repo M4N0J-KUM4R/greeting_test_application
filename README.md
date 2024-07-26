@@ -25,4 +25,4 @@ An ECR repository for storing Docker images
 Appropriate IAM roles and policies
 
 Jenkins Setup
-Configure Jenkins with the necessary plugins and credentials for AWS and your source control system
+Configure Jenkins with the necessary plugins and credentials for AWS and your source control system.
